@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EA OTP Guard</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        input { padding: 10px; font-size: 16px; width: 200px; margin: 5px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        #resultText { margin-top: 20px; font-weight: bold; font-size: 18px; color: #333; }
+    </style>
+</head>
+<body>
+
+    <h2>OTP Guard</h2>
+    <div>
+        <input type="text" id="commandInput" placeholder="Type !guard here">
+    </div>
+    <div>
+        <!-- New PIN Box -->
+        <input type="text" id="pinInput" placeholder="Enter 4-Digit PIN" maxlength="4">
+    </div>
+    
+    <button onclick="getCode()">Submit</button>
+    
+    <p id="resultText">Waiting for command...</p>
+
+    <script>
+        async function getCode() {
+            const command = document.getElementById('commandInput').value;
+            const pin = document.getElementById('pinInput').value;
+            const resultDisplay = document.getElementById('resultText');
+
+            if (command !== '!guard') {
+                resultDisplay.innerText = "Invalid command.";
+                resultDisplay.style.color = "red";
+                return;
+            }
+
+            if (pin.length !== 4 || isNaN(pin)) {
+                resultDisplay.innerText = "Please enter a valid 4-digit PIN.";
+                resultDisplay.style.color = "red";
+                return;
+            }
+
+            resultDisplay.innerText = "Checking server for code...";
+            resultDisplay.style.color = "black";
+            
+            try {
+                // We now send the PIN attached to the URL
+                const response = await fetch(`http://localhost:3000/api/get-code?pin=${pin}`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    resultDisplay.innerText = "Your EA Code: " + data.code;
+                    resultDisplay.style.color = "green";
+                } else {
+                    resultDisplay.innerText = data.message;
+                    resultDisplay.style.color = "orange";
+                }
+            } catch (error) {
+                resultDisplay.innerText = "Error connecting to server.";
+                resultDisplay.style.color = "red";
+            }
+        }
+    </script>
+
+</body>
+</html>
