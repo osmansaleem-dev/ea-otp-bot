@@ -49,7 +49,7 @@
             
             try {
                 // We now send the PIN attached to the URL
-                const response = await fetch(`http://localhost:3000/api/get-code?pin=${pin}`);
+                const response = await fetch(`https://ea-otp-backend.onrender.com/api/get-code?pin=${pin}`);
                 const data = await response.json();
                 
                 if (data.status === 'success') {
