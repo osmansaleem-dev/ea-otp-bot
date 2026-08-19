@@ -76,7 +76,10 @@ async function startImapListener() {
         console.error('IMAP Connection Error:', error.message);
     }
 }
-
+// Keep-awake ping route
+app.get('/ping', (req, res) => {
+    res.send('Server is awake');
+});
 app.get('/api/get-code', async (req, res) => {
     const pin = req.query.pin;
     const service = (req.query.service || 'ea').toLowerCase(); // 'ea' or 'steam'
