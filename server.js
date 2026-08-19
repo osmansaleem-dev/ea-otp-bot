@@ -47,12 +47,21 @@ async function startImapListener() {
                 const emailContent = (mail.text || mail.html || "").toString();
 
                 // 1. Steam Guard parsing (5-character uppercase alphanumeric)
-                const steamMatch = emailContent.match(/\b[A-Z0-9]{5}\b/);
-                if (steamMatch && emailContent.toLowerCase().includes('steam')) {
-                    latestSteamCode = steamMatch[0];
+                const steamMatches = emailContent.match(/\b[A-Z0-9]{5}\b/g);
+            if (steamMatches && emailContent.toLowerCase().includes('steam')) {
+                
+                // Ignore hidden HTML/CSS metadata that happens to be 5 characters
+                const ignoredWords = ['XHTML', 'HTTPS', 'COLOR', 'STYLE', 'WIDTH', 'ALIGN', 'FONTS', 'CLASS', 'THEAD', 'TBODY', 'TITLE', 'TABLE'];
+                
+                // Find the first code that isn't in our ignored list
+                const validCode = steamMatches.find(code => !ignoredWords.includes(code));
+
+                if (validCode) {
+                    latestSteamCode = validCode;
                     lastSteamTime = new Date();
                     console.log('Intercepted Steam code:', latestSteamCode);
                 }
+            }
 
                 // 2. EA verification parsing (6-digit numeric)
                 const eaMatch = emailContent.match(/\b\d{6}\b/);
