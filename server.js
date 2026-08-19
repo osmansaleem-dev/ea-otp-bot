@@ -7,8 +7,12 @@ const { simpleParser } = require('mailparser');
 const app = express();
 app.use(cors());
 
+// State variables
 let latestEaCode = null;
-let lastCodeTime = null;
+let lastEaTime = null;
+let latestSteamCode = null;
+let lastSteamTime = null;
+const userStats = {};
 
 const config = {
     imap: {
@@ -25,7 +29,7 @@ const config = {
 async function startImapListener() {
     try {
         const connection = await imaps.connect(config);
-        console.log('Connected to email inbox. Listening for EA codes...');
+        console.log('Connected to email inbox. Listening for EA and Steam codes...');
         await connection.openBox('INBOX');
 
         connection.on('mail', async () => {
@@ -40,14 +44,22 @@ async function startImapListener() {
                 const idHeader = 'Imap-Id: ' + id + '\r\n';
                 
                 const mail = await simpleParser(idHeader + all.body);
-                
-                // Regex looking for standard 6-digit verification codes
-                const codeMatch = mail.text.match(/\b\d{6}\b/); 
-                
-                if (codeMatch) {
-                    latestEaCode = codeMatch[0];
-                    lastCodeTime = new Date();
-                    console.log('Intercepted new code:', latestEaCode);
+                const emailContent = (mail.text || mail.html || "").toString();
+
+                // 1. Steam Guard parsing (5-character uppercase alphanumeric)
+                const steamMatch = emailContent.match(/\b[A-Z0-9]{5}\b/);
+                if (steamMatch && emailContent.toLowerCase().includes('steam')) {
+                    latestSteamCode = steamMatch[0];
+                    lastSteamTime = new Date();
+                    console.log('Intercepted Steam code:', latestSteamCode);
+                }
+
+                // 2. EA verification parsing (6-digit numeric)
+                const eaMatch = emailContent.match(/\b\d{6}\b/);
+                if (eaMatch) {
+                    latestEaCode = eaMatch[0];
+                    lastEaTime = new Date();
+                    console.log('Intercepted EA code:', latestEaCode);
                 }
             }
         });
@@ -55,34 +67,48 @@ async function startImapListener() {
         console.error('IMAP Connection Error:', error.message);
     }
 }
-// Keep a simple count of how many times each PIN is used
-const userStats = {};
 
 app.get('/api/get-code', async (req, res) => {
     const pin = req.query.pin;
+    const service = (req.query.service || 'ea').toLowerCase(); // 'ea' or 'steam'
 
-    // Ensure they provided a 4-digit PIN
+    // Validate 4-digit numeric PIN
     if (!pin || pin.length !== 4 || isNaN(pin)) {
         return res.json({ status: 'error', message: 'A valid 4-digit PIN is required.' });
     }
 
-    if (!latestEaCode) {
-        return res.json({ status: 'waiting', message: 'No recent code found.' });
+    let codeToReturn = null;
+    let timeToCheck = null;
+
+    if (service === 'steam') {
+        codeToReturn = latestSteamCode;
+        timeToCheck = lastSteamTime;
+    } else {
+        codeToReturn = latestEaCode;
+        timeToCheck = lastEaTime;
+    }
+
+    if (!codeToReturn) {
+        return res.json({ 
+            status: 'waiting', 
+            message: `No recent ${service.toUpperCase()} code found.` 
+        });
     }
     
+    // Check 10-minute expiration window
     const now = new Date();
-    const diffMins = Math.round((now - lastCodeTime) / 60000);
+    const diffMins = Math.round((now - timeToCheck) / 60000);
     
     if (diffMins > 10) {
-        latestEaCode = null; 
+        if (service === 'steam') latestSteamCode = null;
+        else latestEaCode = null;
         return res.json({ status: 'expired', message: 'Code expired. Please request a new one.' });
     }
 
-    // --- TRACKING AND NOTIFICATION LOGIC ---
-    // Increase the count for this specific PIN
+    // Update PIN stats
     userStats[pin] = (userStats[pin] || 0) + 1;
 
-    // Send a notification to Discord
+    // Discord Webhook Notification
     const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
     if (webhookUrl) {
         try {
@@ -90,7 +116,7 @@ app.get('/api/get-code', async (req, res) => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    content: `🚨 **Code Retrieved!**\nUser PIN: \`${pin}\`\nTotal times this PIN has been used: **${userStats[pin]}**` 
+                    content: `🚨 **${service.toUpperCase()} Code Retrieved!**\nUser PIN: \`${pin}\`\nTotal times used: **${userStats[pin]}**` 
                 })
             });
         } catch (err) {
@@ -98,8 +124,8 @@ app.get('/api/get-code', async (req, res) => {
         }
     }
 
-    // Return the code to the user
-    res.json({ status: 'success', code: latestEaCode });
+    // Return the code
+    res.json({ status: 'success', code: codeToReturn });
 });
 
 const PORT = process.env.PORT || 3000;
